@@ -1,109 +1,82 @@
-"""
-This is a echo bot.
-It echoes any incoming text messages.
-"""
+from telegram.constants import ParseMode
+import os
+from telegram import ReplyKeyboardMarkup,Update,WebAppInfo,KeyboardButton,InlineKeyboardMarkup,InlineKeyboardButton,ReplyKeyboardRemove
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    ContextTypes,
+    ConversationHandler,
+    MessageHandler,
+    filters,
+    CallbackQueryHandler,PicklePersistence
 
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
-from aiogram.fsm.storage.memory import MemoryStorage
-import logging
+)
+from dotenv import load_dotenv
 import requests
-import psycopg2
-from aiogram.dispatcher.filters.state import State, StatesGroup
-from aiogram.dispatcher.filters import Text
-from aiogram import types
-from aiogram import Bot, Dispatcher, executor, types
-from aiogram.dispatcher import FSMContext
-from datetime import datetime
-#conn = psycopg2.connect(host="0.0.0.0", port=5432, database="ankalif1_sunnah",
-#                        user="ankalif1_nortoy", password="JaG~4L^8,(k#")
-#cur = conn.cursor()
+load_dotenv()
+telegram_link = 'https://t.me/Sunnahproductsuz'
 
-API_TOKEN = '6013264958:AAGV29YVD_JHdV335krVxsnmfLwlGTvnadA'
-logging.basicConfig(level=logging.INFO)
-bot = Bot(token=API_TOKEN)
-dp = Dispatcher(bot, storage=MemoryStorage())
-b5 = KeyboardButton("Raqamni ulashish", request_contact=True)
-kb_client = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-kb_client.add(b5)
+#Base.metadata.create_all(bind=engine)
+BOTTOKEN = os.environ.get('BOT_TOKEN')
+BITRIX = os.environ.get('BITRIX')
+url = f"https://api.telegram.org/bot{BOTTOKEN}/sendMessage"
+PHONENUMBER,FULLNAME,= range(2)
+persistence = PicklePersistence(filepath='hello.pickle')
 
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Starts the conversation and asks the user about their gender."""
+    keyboard =[[KeyboardButton(text='Raqamni ulashish', request_contact=True)]]
+    await update.message.reply_text('Assalomu alaykum😊\n\nSunnah Products aloqa botiga xush kelibsiz!')
+    await update.message.reply_text('Biz siz bilan bog’lanishimiz uchun kontaktingizni qoldiring📥',reply_markup=ReplyKeyboardMarkup(keyboard=keyboard,resize_keyboard=True))
 
-channel_link = f'https://t.me/Sunnahproductsuz'
+    return PHONENUMBER
 
 
-# Create an InlineKeyboardButton with the channel link
-channel_button = InlineKeyboardButton(text='Telegram kanal🔔', url=channel_link)
-keyboard_inline = InlineKeyboardMarkup().add(channel_button)
-
-url = f"https://api.telegram.org/bot6013264958:AAGV29YVD_JHdV335krVxsnmfLwlGTvnadA/sendMessage"
 
 
-class Form(StatesGroup):
-    phone_number = State()  # Will be represented in storage as 'Form:name'
-    first_name = State()  # Will be represented in storage as 'Form:age'
-    user_id = State()
+async def phonenumber(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    context.user_data['phone_number'] = update.message.contact.phone_number
+    await update.message.reply_text('Ismingizni kiriting📝',reply_markup=ReplyKeyboardRemove())
+    return FULLNAME
 
 
-@dp.message_handler(commands=['start'])
-async def send_welcome(message: types.Message):
-    """
-    This handler will be called when user sends `/start` or `/help` command
-    """
+async def fullname(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    context.user_data['full_name'] = update.message.text
+    await update.message.reply_text('Murojaatingiz uchun rahmat\n\n😊 Mutaxassisimiz tez fursatda siz bilan bog’lanadi')
+    await update.message.reply_text('Foydali ma’lumotlarni o’tkazib yubormaslik uchun Telegram kanalimizga obuna bo’ling👇🏻\n',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('Посмотреть фото/видео',url=telegram_link)]]))
+    body = {'chat_id': -1001658409739,
+                'text': "<b>Ismi:</b>  {},\n<b>Telefon raqami:</b>  {}".format(context.user_data['full_name'], context.user_data['phone_number']), 'parse_mode': 'HTML'}
+    requests.post(url=url, json=body)
+    bitrix = f"{BITRIX}/crm.lead.add.json?FIELDS[TITLE]=TELEGRAM&FIELDS[NAME]={context.user_data['full_name']}&FIELDS[LAST_NAME]={context.user_data['full_name']}&FIELDS[PHONE][0][VALUE]={context.user_data['phone_number']}&FIELDS[PHONE][0][VALUE_TYPE]=Telegram bot"
+    data = requests.post(url=bitrix)
+    return ConversationHandler.END
 
-    await Form.phone_number.set()
+def main() -> None:
+    """Run the bot."""
+    # Create the Application and pass it your bot's token.
+    persistence = PicklePersistence(filepath="conversationbot")
+    application = Application.builder().token(BOTTOKEN).persistence(persistence).build()
+    #add states phone fullname category desction and others 
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={
+            #LANGUAGE: [MessageHandler(filters.TEXT,language)],
+            PHONENUMBER:[MessageHandler(filters.CONTACT,phonenumber)],
+            FULLNAME:[MessageHandler(filters.TEXT,fullname)],
 
-    await message.answer("Assalomu alaykum😊\n\nSunnah Products aloqa botiga xush kelibsiz! ")
-    if message.chat.type == 'private':
-        await message.answer('Biz siz bilan bog’lanishimiz uchun kontaktingizni qoldiring📥', reply_markup=kb_client)
+        },
+        fallbacks=[CommandHandler('start',start)],
+        allow_reentry=True,
+        name="my_conversation",
+        persistent=True,
 
+    )
 
-@dp.message_handler(content_types=types.ContentType.CONTACT, state=Form.phone_number)
-async def contacts(message: types.Message, state: FSMContext):
-    async with state.proxy() as data:
-        data['phone_number'] = message.contact.phone_number
-        data['user_id'] = message.from_user.id
-    await Form.next()
-    ReplyKeyboardRemove()
-    # await state.finish()
-    await message.answer('Iltimos ismingizni kiriting!', reply_markup=ReplyKeyboardRemove())
+    application.add_handler(conv_handler)
 
-
-@dp.message_handler(state=Form.first_name)
-async def echo(message: types.Message, state: FSMContext):
-    date = datetime.now().date()
-    # old style:
-    # await bot.send_message(message.chat.id, message.text)
-    async with state.proxy() as data:
-        data['first_name'] = message.text
-
-        body = {'chat_id': -1001658409739,
-                'text': "<b>Ismi:</b>  {},\n<b>Telefon raqami:</b>  {}".format(data['first_name'], data['phone_number']), 'parse_mode': 'HTML'}
-        requests.post(url=url, json=body)
-       # try:
-       #     cur.execute("INSERT INTO \"user_data\" (user_id,first_name,phone_number,date) VALUES (%s,%s,%s,%s);",
-       #                 (data['user_id'], data['first_name'], data['phone_number'],  date))
-       #     conn.commit()
-       # except:
-       #     conn.commit()
-
-        await message.answer('Murojaatingiz uchun rahmat\n\n😊 Mutaxassisimiz tez fursatda siz bilan bog’lanadi')
-        await message.answer('Foydali ma’lumotlarni o’tkazib yubormaslik uchun Telegram kanalimizga obuna bo’ling👇🏻', reply_markup=keyboard_inline)
-        await state.finish()
+    # Run the bot until the user presses Ctrl-C
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
-@dp.message_handler(commands=['count'])
-async def send_welcome(message: types.Message):
-    """
-    This handler will be called when user sends `/start` or `/help` command
-    """
-    if message.from_user.id in [2075574834, 1054132889]:
-       # cur.execute(
-       #     "SELECT COUNT(*) FROM \"user_data\" WHERE date >= current_date - interval '30' day;")
-       # result = cur.fetchone()
-       # cur.close
-        await message.answer('Ohirgi 30 kunda royhatdan otgan foydalanuvchilar soni', parse_mode="HTML")
-    else:
-        await message.answer("Afsuski bu funksiyadan foydalanish uchun siz admin emassiz ;)")
-
-
-if __name__ == '__main__':
-    executor.start_polling(dp, skip_updates=True,loop=None)
+if __name__ == "__main__":
+    main()
