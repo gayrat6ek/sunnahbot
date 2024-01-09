@@ -48,7 +48,9 @@ async def fullname(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 'text': "<b>Ismi:</b>  {},\n<b>Telefon raqami:</b>  {}".format(context.user_data['full_name'], context.user_data['phone_number']), 'parse_mode': 'HTML'}
     requests.post(url=url, json=body)
     bitrix = f"{BITRIX}/crm.lead.add.json?FIELDS[TITLE]=TELEGRAM&FIELDS[NAME]={context.user_data['full_name']}&FIELDS[LAST_NAME]={context.user_data['full_name']}&FIELDS[PHONE][0][VALUE]={context.user_data['phone_number']}&FIELDS[PHONE][0][VALUE_TYPE]=Telegram bot"
+
     data = requests.post(url=bitrix)
+    print(data.content)
     return ConversationHandler.END
 
 def main() -> None:
